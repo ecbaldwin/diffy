@@ -3,7 +3,7 @@ use crate::{
     range::{DiffRange, SliceLike},
     utils::Classifier,
 };
-use std::{cmp, ops};
+use std::{borrow::Cow, cmp, ops};
 
 mod cleanup;
 mod myers;
@@ -94,7 +94,22 @@ impl DiffOptions {
     }
 
     /// Produce a Patch between two texts based on the configured options
+    /// Uses the default names "original" and "modified"
     pub fn create_patch<'a>(&self, original: &'a str, modified: &'a str) -> Patch<'a, str> {
+        self.create_patch_with_names(original, modified, "original", "modified")
+    }
+
+    /// Produce a Patch between two texts based on the configured options
+    pub fn create_patch_with_names<'a, P>(
+        &self,
+        original: &'a str,
+        modified: &'a str,
+        original_name: P,
+        modified_name: P,
+    ) -> Patch<'a, str>
+    where
+        P: Into<Cow<'a, str>>,
+    {
         let mut classifier = Classifier::default();
         let (old_lines, old_ids) = classifier.classify_lines(original);
         let (new_lines, new_ids) = classifier.classify_lines(modified);
@@ -102,7 +117,7 @@ impl DiffOptions {
         let solution = self.diff_slice(&old_ids, &new_ids);
 
         let hunks = to_hunks(&old_lines, &new_lines, &solution, self.context_len);
-        Patch::new(Some("original"), Some("modified"), hunks)
+        Patch::new(Some(original_name), Some(modified_name), hunks)
     }
 
     /// Create a patch between two potentially non-utf8 texts
