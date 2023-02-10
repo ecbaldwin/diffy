@@ -12,4 +12,7 @@ categories = ["text-processing"]
 edition = "2018"
 
 [dependencies]
+indoc = "2.0.0"
 nu-ansi-term = "0.46.0"
+unicode_categories = "0.1.1"
+unzip-n = "0.1.2"

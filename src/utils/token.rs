@@ -44,11 +44,10 @@ impl<'a, 'f> GroupIter<'a, 'f> {
                         Box::new(&groups::Whitespace {}),
                     ];
 
-                    for (ndx, grouper) in groups.iter().enumerate() {
+                    for grouper in groups.iter() {
                         if !grouper.start(c) {
                             continue;
                         }
-                        eprintln!("Matched group number {}", ndx);
                         let mut pos = match s.find(|c: char| !grouper.belongs(c)) {
                             None => s.len(),
                             Some(pos) => pos,
@@ -64,7 +63,6 @@ impl<'a, 'f> GroupIter<'a, 'f> {
                         return Some(pos - 1);
                     }
                     // By default, characters don't group at all
-                    eprintln!("Matched default single character group");
                     return Some(0);
                 }
                 None

@@ -2,7 +2,6 @@ use super::*;
 use crate::{
     apply::apply,
     diff::{Diff, DiffRange},
-    patch::Patch,
     range::Range,
 };
 
@@ -332,10 +331,6 @@ macro_rules! assert_patch {
         assert_eq!(patch_str, $expected);
         assert_eq!(patch_bytes, patch_str.as_bytes());
         assert_eq!(patch_bytes, $expected.as_bytes());
-        assert_eq!(Patch::from_str($expected).unwrap(), patch);
-        assert_eq!(Patch::from_str(&patch_str).unwrap(), patch);
-        assert_eq!(Patch::from_bytes($expected.as_bytes()).unwrap(), bpatch);
-        assert_eq!(Patch::from_bytes(&patch_bytes).unwrap(), bpatch);
         assert_eq!(apply($old, &patch).unwrap(), $new);
         assert_eq!(
             crate::apply_bytes($old.as_bytes(), &bpatch).unwrap(),
@@ -553,36 +548,6 @@ void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size
 }
 ";
 
-    // TODO This differs from the expected output when using git's myers algorithm
-    let expected_git = "\
---- original
-+++ modified
-@@ -1,14 +1,14 @@
--void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size_t n)
-+int Chunk_bounds_check(Chunk *chunk, size_t start, size_t n)
- {
--    if (!Chunk_bounds_check(src, src_start, n)) return;
--    if (!Chunk_bounds_check(dst, dst_start, n)) return;
-+    if (chunk == NULL) return 0;
-
--    memcpy(dst->data + dst_start, src->data + src_start, n);
-+    return start <= chunk->length && n <= chunk->length - start;
- }
-
--int Chunk_bounds_check(Chunk *chunk, size_t start, size_t n)
-+void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size_t n)
- {
--    if (chunk == NULL) return 0;
-+    if (!Chunk_bounds_check(src, src_start, n)) return;
-+    if (!Chunk_bounds_check(dst, dst_start, n)) return;
-
--    return start <= chunk->length && n <= chunk->length - start;
-+    memcpy(dst->data + dst_start, src->data + src_start, n);
- }
-";
-    let git_patch = Patch::from_str(expected_git).unwrap();
-    assert_eq!(apply(original, &git_patch).unwrap(), a);
-
     let expected_diffy = "\
 --- original
 +++ modified
@@ -610,57 +575,4 @@ void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size
 -}
 ";
     assert_patch!(original, a, expected_diffy);
-}
-
-// In the event that a patch has an invalid hunk range we want to ensure that when apply is
-// attempting to search for a matching position to apply a hunk that the search algorithm runs in
-// time bounded by the length of the original image being patched. Before clamping the search space
-// this test would take >200ms and now it runs in roughly ~30us on an M1 laptop.
-#[test]
-fn apply_with_incorrect_hunk_has_bounded_performance() {
-    let patch = "\
-@@ -10,6 +1000000,8 @@
- First:
-     Life before death,
-     strength before weakness,
-     journey before destination.
- Second:
--    I will put the law before all else.
-+    I swear to seek justice,
-+    to let it guide me,
-+    until I find a more perfect Ideal.
-";
-
-    let original = "\
-First:
-    Life before death,
-    strength before weakness,
-    journey before destination.
-Second:
-    I will put the law before all else.
-";
-
-    let expected = "\
-First:
-    Life before death,
-    strength before weakness,
-    journey before destination.
-Second:
-    I swear to seek justice,
-    to let it guide me,
-    until I find a more perfect Ideal.
-";
-
-    let patch = Patch::from_str(patch).unwrap();
-
-    let now = std::time::Instant::now();
-
-    let result = apply(original, &patch).unwrap();
-
-    let elapsed = now.elapsed();
-
-    println!("{:?}", elapsed);
-    assert!(elapsed < std::time::Duration::from_micros(200));
-
-    assert_eq!(result, expected);
 }

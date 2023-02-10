@@ -181,10 +181,11 @@ impl RangeBounds for ops::RangeFull {
     }
 }
 
-pub trait SliceLike: ops::Index<ops::Range<usize>> {
+pub trait SliceLike: ops::Index<ops::Range<usize>> + ops::Index<ops::RangeFrom<usize>> {
     fn len(&self) -> usize;
     fn empty<'a>() -> &'a Self;
     fn as_slice(&self, range: ops::Range<usize>) -> &Self;
+    fn as_slice_from(&self, range: ops::RangeFrom<usize>) -> &Self;
     fn common_prefix_len(&self, other: &Self) -> usize;
     fn common_suffix_len(&self, other: &Self) -> usize;
     fn common_overlap_len(&self, other: &Self) -> usize;
@@ -202,6 +203,10 @@ impl SliceLike for str {
     }
 
     fn as_slice(&self, range: ops::Range<usize>) -> &str {
+        &self[range]
+    }
+
+    fn as_slice_from(&self, range: ops::RangeFrom<usize>) -> &str {
         &self[range]
     }
 
@@ -299,6 +304,12 @@ where
     }
 
     fn as_slice(&self, range: ops::Range<usize>) -> &[T] {
+        &self[range]
+    }
+
+    // TODO(Carl) I think there must be a way to implement `as_slice` and `as_slice_from` in a more
+    // generic way. I'll need to learn a little more about how indexing types work in rust.
+    fn as_slice_from(&self, range: ops::RangeFrom<usize>) -> &[T] {
         &self[range]
     }
 

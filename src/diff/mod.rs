@@ -3,10 +3,14 @@ use crate::{
     range::{DiffRange, SliceLike},
     utils::Classifier,
 };
-use std::{borrow::Cow, cmp, ops};
+use std::{
+    borrow::Cow,
+    cmp,
+    ops::{self},
+};
 
-mod cleanup;
-mod myers;
+pub mod cleanup;
+pub mod myers;
 
 #[cfg(test)]
 mod tests;
@@ -111,12 +115,21 @@ impl DiffOptions {
         P: Into<Cow<'a, str>>,
     {
         let mut classifier = Classifier::default();
-        let (old_lines, old_ids) = classifier.classify_lines(original);
-        let (new_lines, new_ids) = classifier.classify_lines(modified);
+        let (old_lines, old_ids, old_pos) = classifier.classify_lines(original);
+        let (new_lines, new_ids, new_pos) = classifier.classify_lines(modified);
 
         let solution = self.diff_slice(&old_ids, &new_ids);
 
-        let hunks = to_hunks(&old_lines, &new_lines, &solution, self.context_len);
+        let hunks = to_hunks(
+            &old_lines,
+            &new_lines,
+            &solution,
+            self.context_len,
+            &original,
+            &modified,
+            &old_pos,
+            &new_pos,
+        );
         Patch::new(Some(original_name), Some(modified_name), hunks)
     }
 
@@ -127,12 +140,21 @@ impl DiffOptions {
         modified: &'a [u8],
     ) -> Patch<'a, [u8]> {
         let mut classifier = Classifier::default();
-        let (old_lines, old_ids) = classifier.classify_lines(original);
-        let (new_lines, new_ids) = classifier.classify_lines(modified);
+        let (old_lines, old_ids, old_pos) = classifier.classify_lines(original);
+        let (new_lines, new_ids, new_pos) = classifier.classify_lines(modified);
 
         let solution = self.diff_slice(&old_ids, &new_ids);
 
-        let hunks = to_hunks(&old_lines, &new_lines, &solution, self.context_len);
+        let hunks = to_hunks(
+            &old_lines,
+            &new_lines,
+            &solution,
+            self.context_len,
+            &original,
+            &modified,
+            &old_pos,
+            &new_pos,
+        );
         Patch::new(Some(&b"original"[..]), Some(&b"modified"[..]), hunks)
     }
 
@@ -205,11 +227,15 @@ pub fn create_patch_bytes<'a>(original: &'a [u8], modified: &'a [u8]) -> Patch<'
     DiffOptions::default().create_patch_bytes(original, modified)
 }
 
-fn to_hunks<'a, T: ?Sized>(
+fn to_hunks<'a, T: ?Sized + SliceLike>(
     lines1: &[&'a T],
     lines2: &[&'a T],
     solution: &[DiffRange<[u64]>],
     context_len: usize,
+    original: &'a T,
+    modified: &'a T,
+    old_pos: &Vec<usize>,
+    new_pos: &Vec<usize>,
 ) -> Vec<Hunk<'a, T>> {
     let edit_script = build_edit_script(solution);
 
@@ -235,16 +261,37 @@ fn to_hunks<'a, T: ?Sized>(
             lines.push(Line::Context(*line));
         }
 
+        let mut originals = Vec::new();
+        let mut modifieds = Vec::new();
+
         loop {
             // Delete lines from text1
-            for line in lines1.get(script.old.clone()).into_iter().flatten() {
+            let range = script.old.clone();
+            for line in lines1.get(range.clone()).into_iter().flatten() {
                 lines.push(Line::Delete(*line));
             }
+            let substr = match old_pos.get(range.start) {
+                None => original.as_slice(0..0),
+                Some(&start) => match old_pos.get(range.end) {
+                    None => original.as_slice_from(start..),
+                    Some(&end) => original.as_slice(start..end),
+                },
+            };
+            originals.push(substr);
 
             // Insert lines from text2
-            for line in lines2.get(script.new.clone()).into_iter().flatten() {
+            let range = script.new.clone();
+            for line in lines2.get(range.clone()).into_iter().flatten() {
                 lines.push(Line::Insert(*line));
             }
+            let substr = match new_pos.get(range.start) {
+                None => modified.as_slice(0..0),
+                Some(&start) => match new_pos.get(range.end) {
+                    None => modified.as_slice_from(start..),
+                    Some(&end) => modified.as_slice(start..end),
+                },
+            };
+            modifieds.push(substr);
 
             if let Some(s) = edit_script.get(idx + 1) {
                 // Check to see if we can merge the hunks
@@ -290,7 +337,9 @@ fn to_hunks<'a, T: ?Sized>(
         let len2 = end2 - start2;
         let new_range = HunkRange::new(if len2 > 0 { start2 + 1 } else { start2 }, len2);
 
-        hunks.push(Hunk::new(old_range, new_range, None, lines));
+        hunks.push(Hunk::new(
+            old_range, new_range, None, lines, originals, modifieds,
+        ));
         idx += 1;
     }
 

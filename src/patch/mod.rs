@@ -194,6 +194,8 @@ pub struct Hunk<'a, T: ?Sized> {
     function_context: Option<&'a T>,
 
     lines: Vec<Line<'a, T>>,
+    originals: Vec<&'a T>,
+    modifieds: Vec<&'a T>,
 }
 
 fn hunk_lines_count<T: ?Sized>(lines: &[Line<'_, T>]) -> (usize, usize) {
@@ -210,6 +212,8 @@ impl<'a, T: ?Sized> Hunk<'a, T> {
         new_range: HunkRange,
         function_context: Option<&'a T>,
         lines: Vec<Line<'a, T>>,
+        originals: Vec<&'a T>,
+        modifieds: Vec<&'a T>,
     ) -> Self {
         let (old_count, new_count) = hunk_lines_count(&lines);
 
@@ -221,6 +225,8 @@ impl<'a, T: ?Sized> Hunk<'a, T> {
             new_range,
             function_context,
             lines,
+            originals,
+            modifieds,
         }
     }
 
@@ -252,6 +258,8 @@ impl<T: ?Sized> Clone for Hunk<'_, T> {
             new_range: self.new_range,
             function_context: self.function_context,
             lines: self.lines.clone(),
+            originals: self.originals.clone(),
+            modifieds: self.modifieds.clone(),
         }
     }
 }

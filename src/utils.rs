@@ -4,6 +4,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     hash::Hash,
 };
+use unzip_n::unzip_n;
 
 pub mod token;
 
@@ -26,10 +27,27 @@ impl<'a, T: ?Sized + Eq + Hash> Classifier<'a, T> {
     }
 }
 
+unzip_n!(3);
+
 impl<'a, T: ?Sized + Text> Classifier<'a, T> {
-    pub fn classify_lines(&mut self, text: &'a T) -> (Vec<&'a T>, Vec<u64>) {
+    pub fn classify_lines(&mut self, text: &'a T) -> (Vec<&'a T>, Vec<u64>, Vec<usize>) {
+        let mut pos = 0;
         token::LineIter::new(text)
-            .map(|line| (line, self.classify(line)))
+            .map(|line| {
+                (line, self.classify(line), {
+                    let p = pos;
+                    pos += line.len();
+                    p
+                })
+            })
+            .unzip_n()
+    }
+}
+
+impl<'a> Classifier<'a, str> {
+    pub fn classify_groups(&mut self, text: &'a str) -> (Vec<&'a str>, Vec<u64>) {
+        token::GroupIter::new(text)
+            .map(|group| (group, self.classify(group)))
             .unzip()
     }
 }
