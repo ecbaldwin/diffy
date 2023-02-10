@@ -17,7 +17,7 @@ impl<'a, 'f, T: super::Text + ?Sized> Iterator for TokenIter<'a, 'f, T> {
         }
 
         let end = if let Some(idx) = self.1(self.0) {
-            idx + 1
+            idx
         } else {
             self.0.len()
         };
@@ -53,17 +53,22 @@ impl<'a, 'f> GroupIter<'a, 'f> {
                             Some(pos) => pos,
                         };
                         loop {
-                            match s.chars().nth(pos - 1) {
-                                Some(c) if !grouper.end(c) => {
-                                    pos -= 1;
+                            loop {
+                                pos -= 1;
+                                if s.is_char_boundary(pos) {
+                                    break;
                                 }
+                            }
+                            match s[pos..].chars().next() {
+                                // Oops, should be looking for the byte before
+                                Some(c) if grouper.end(c) => return Some(pos + c.len_utf8()),
+                                Some(_) => continue,
                                 _ => break,
                             }
                         }
-                        return Some(pos - 1);
                     }
                     // By default, characters don't group at all
-                    return Some(0);
+                    return Some(c.len_utf8());
                 }
                 None
             },
@@ -86,7 +91,12 @@ impl<'a, 'f, T: super::Text + ?Sized> LineIter<'a, 'f, T> {
     pub fn new(text: &'a T) -> Self {
         Self(TokenIter::<'a, 'f, T>::new(
             text,
-            &|s: &'a T| -> Option<usize> { s.find("\n") },
+            &|s: &'a T| -> Option<usize> {
+                match s.find("\n") {
+                    Some(ndx) => Some(ndx + 1),
+                    None => None,
+                }
+            },
         ))
     }
 }

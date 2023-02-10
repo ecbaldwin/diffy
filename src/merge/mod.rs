@@ -152,9 +152,9 @@ impl MergeOptions {
         theirs: &'a str,
     ) -> Result<String, String> {
         let mut classifier = Classifier::default();
-        let (ancestor_lines, ancestor_ids, _) = classifier.classify_lines(ancestor);
-        let (our_lines, our_ids, _) = classifier.classify_lines(ours);
-        let (their_lines, their_ids, _) = classifier.classify_lines(theirs);
+        let (ancestor_lines, ancestor_ids, ancestor_pos) = classifier.classify_lines(ancestor);
+        let (our_lines, our_ids, our_pos) = classifier.classify_lines(ours);
+        let (their_lines, their_ids, their_pos) = classifier.classify_lines(theirs);
 
         let opts = DiffOptions::default();
         let our_solution = opts.diff_slice(&ancestor_ids, &our_ids);
@@ -172,6 +172,12 @@ impl MergeOptions {
             &merge,
             self.conflict_marker_length,
             self.style,
+            &ancestor,
+            &ours,
+            &theirs,
+            &ancestor_pos,
+            &our_pos,
+            &their_pos,
         )
     }
 
@@ -486,6 +492,20 @@ fn cleanup_conflicts<'ancestor, 'ours, 'theirs, T: ?Sized + SliceLike + PartialE
     }
 }
 
+fn get_entire_orig_string<'a>(
+    range: std::ops::Range<usize>,
+    orig: &'a str,
+    positions: &Vec<usize>,
+) -> &'a str {
+    match positions.get(range.start) {
+        None => orig.as_slice(0..0),
+        Some(&start) => match positions.get(range.end) {
+            None => orig.as_slice_from(start..),
+            Some(&end) => orig.as_slice(start..end),
+        },
+    }
+}
+
 fn output_result<'a, T: ?Sized>(
     ancestor: &[&'a str],
     ours: &[&'a str],
@@ -493,6 +513,12 @@ fn output_result<'a, T: ?Sized>(
     merge: &[MergeRange<T>],
     marker_len: usize,
     style: ConflictStyle,
+    ancestor_orig: &'a str,
+    ours_orig: &'a str,
+    theirs_orig: &'a str,
+    ancestor_pos: &Vec<usize>,
+    ours_pos: &Vec<usize>,
+    theirs_pos: &Vec<usize>,
 ) -> Result<String, String> {
     let mut conflicts = 0;
     let mut output = String::new();
@@ -503,16 +529,62 @@ fn output_result<'a, T: ?Sized>(
                 output.extend(ancestor[range.range()].iter().copied());
             }
             MergeRange::Conflict(ancestor_range, ours_range, theirs_range) => {
+                let ancestor_str =
+                    get_entire_orig_string(ancestor_range.range(), ancestor_orig, ancestor_pos);
+                let ours_str = get_entire_orig_string(ours_range.range(), ours_orig, ours_pos);
+                let theirs_str =
+                    get_entire_orig_string(theirs_range.range(), theirs_orig, theirs_pos);
+
+                let mut classifier = Classifier::default();
+                let (ancestor, ancestor_ids) = classifier.classify_groups(ancestor_str);
+                let (ours, ours_ids) = classifier.classify_groups(ours_str);
+                let (theirs, theirs_ids) = classifier.classify_groups(theirs_str);
+
+                let opts = DiffOptions::default();
+                let our_solution = opts.diff_slice(&ancestor_ids, &ours_ids);
+                let their_solution = opts.diff_slice(&ancestor_ids, &theirs_ids);
+
+                let merged = merge_solutions(&our_solution, &their_solution);
+                let mut merge = diff3_range_to_merge_range(&merged);
+                cleanup_conflicts(&mut merge);
+                let has_conflicts = merge.iter().any(|r| match r {
+                    MergeRange::Conflict(_, _, _) => true,
+                    _ => false,
+                });
+
+                if !has_conflicts {
+                    for merge_range in merge {
+                        match merge_range {
+                            MergeRange::Equal(range, ..) => {
+                                output.extend(ancestor[range.range()].iter().copied());
+                            }
+                            MergeRange::Ours(range) => {
+                                output.extend(ours[range.range()].iter().copied());
+                            }
+                            MergeRange::Theirs(range) => {
+                                output.extend(theirs[range.range()].iter().copied());
+                            }
+                            MergeRange::Both(range, _) => {
+                                output.extend(ours[range.range()].iter().copied());
+                            }
+                            MergeRange::Conflict(_, _, _) => {
+                                panic!("shouldn't have any conflicts");
+                            }
+                        }
+                    }
+                    continue;
+                }
+
                 add_conflict_marker(&mut output, '<', marker_len, Some("ours"));
-                output.extend(ours[ours_range.range()].iter().copied());
+                output.push_str(ours_str);
 
                 if let ConflictStyle::Diff3 = style {
                     add_conflict_marker(&mut output, '|', marker_len, Some("original"));
-                    output.extend(ancestor[ancestor_range.range()].iter().copied());
+                    output.push_str(ancestor_str);
                 }
 
                 add_conflict_marker(&mut output, '=', marker_len, None);
-                output.extend(theirs[theirs_range.range()].iter().copied());
+                output.push_str(theirs_str);
                 add_conflict_marker(&mut output, '>', marker_len, Some("theirs"));
                 conflicts += 1;
             }
