@@ -1,8 +1,6 @@
 mod format;
-mod parse;
 
 pub use format::PatchFormatter;
-pub use parse::ParsePatchError;
 
 use std::{borrow::Cow, fmt, ops};
 
@@ -65,39 +63,6 @@ impl<T: AsRef<[u8]> + ToOwned + ?Sized> Patch<'_, T> {
             .write_patch_into(self, &mut bytes)
             .unwrap();
         bytes
-    }
-}
-
-impl<'a> Patch<'a, str> {
-    /// Parse a `Patch` from a string
-    ///
-    /// ```
-    /// use diffy::Patch;
-    ///
-    /// let s = "\
-    /// --- a/ideals
-    /// +++ b/ideals
-    /// @@ -1,4 +1,6 @@
-    ///  First:
-    ///      Life before death,
-    ///      strength before weakness,
-    ///      journey before destination.
-    /// +Second:
-    /// +    I will protect those who cannot protect themselves.
-    /// ";
-    ///
-    /// let patch = Patch::from_str(s).unwrap();
-    /// ```
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &'a str) -> Result<Patch<'a, str>, ParsePatchError> {
-        parse::parse(s)
-    }
-}
-
-impl<'a> Patch<'a, [u8]> {
-    /// Parse a `Patch` from bytes
-    pub fn from_bytes(s: &'a [u8]) -> Result<Patch<'a, [u8]>, ParsePatchError> {
-        parse::parse_bytes(s)
     }
 }
 
