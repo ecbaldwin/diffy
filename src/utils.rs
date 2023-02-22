@@ -5,6 +5,8 @@ use std::{
     hash::Hash,
 };
 
+pub mod token;
+
 /// Classifies lines, converting lines into unique `u64`s for quicker comparison
 pub struct Classifier<'a, T: ?Sized> {
     next_id: u64,
@@ -26,7 +28,7 @@ impl<'a, T: ?Sized + Eq + Hash> Classifier<'a, T> {
 
 impl<'a, T: ?Sized + Text> Classifier<'a, T> {
     pub fn classify_lines(&mut self, text: &'a T) -> (Vec<&'a T>, Vec<u64>) {
-        LineIter::new(text)
+        token::LineIter::new(text)
             .map(|line| (line, self.classify(line)))
             .unzip()
     }
@@ -38,35 +40,6 @@ impl<T: Eq + Hash + ?Sized> Default for Classifier<'_, T> {
             next_id: 0,
             unique_ids: HashMap::default(),
         }
-    }
-}
-
-/// Iterator over the lines of a string, including the `\n` character.
-pub struct LineIter<'a, T: ?Sized>(&'a T);
-
-impl<'a, T: ?Sized> LineIter<'a, T> {
-    pub fn new(text: &'a T) -> Self {
-        Self(text)
-    }
-}
-
-impl<'a, T: Text + ?Sized> Iterator for LineIter<'a, T> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
-            return None;
-        }
-
-        let end = if let Some(idx) = self.0.find("\n") {
-            idx + 1
-        } else {
-            self.0.len()
-        };
-
-        let (line, remaining) = self.0.split_at(end);
-        self.0 = remaining;
-        Some(line)
     }
 }
 
@@ -84,7 +57,7 @@ pub trait Text: Eq + Hash {
     fn split_at(&self, mid: usize) -> (&Self, &Self);
     fn as_str(&self) -> Option<&str>;
     fn as_bytes(&self) -> &[u8];
-    fn lines(&self) -> LineIter<Self>;
+    fn lines(&self) -> token::LineIter<Self>;
 
     fn parse<T: std::str::FromStr>(&self) -> Option<T> {
         self.as_str().and_then(|s| s.parse().ok())
@@ -137,8 +110,8 @@ impl Text for str {
         self.as_bytes()
     }
 
-    fn lines(&self) -> LineIter<Self> {
-        LineIter::new(self)
+    fn lines(&self) -> token::LineIter<Self> {
+        token::LineIter::new(self)
     }
 }
 
@@ -187,8 +160,8 @@ impl Text for [u8] {
         self
     }
 
-    fn lines(&self) -> LineIter<Self> {
-        LineIter::new(self)
+    fn lines(&self) -> token::LineIter<Self> {
+        token::LineIter::new(self)
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     patch::{Hunk, Line, Patch},
-    utils::LineIter,
+    utils::token::LineIter,
 };
 use std::{fmt, iter};
 
